@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sample-controller
+  name: composite-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sample
+      app: composite
   template:
     metadata:
       labels:
-        app: sample
+        app: composite
     spec:
       containers:
-      - name: sample
-        image: "vipingoelnagarro/sample-controller:latest"
+      - name: composite
+        image: "vipinpsc/composite-controller:latest"

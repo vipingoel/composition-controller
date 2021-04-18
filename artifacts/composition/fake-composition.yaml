@@ -1,0 +1,6 @@
+apiVersion: crd.example.com/v1alpha1
+kind: Composition
+metadata:
+  name: fake
+spec:
+  replicas: 2

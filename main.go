@@ -24,12 +24,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
-	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
-	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions"
-	"k8s.io/sample-controller/pkg/signals"
+	clientset "composition-controller/pkg/generated/clientset/versioned"
+	informers "composition-controller/pkg/generated/informers/externalversions"
+
+	"composition-controller/pkg/signals"
 )
 
 var (
@@ -54,22 +56,22 @@ func main() {
 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
 	}
 
-	exampleClient, err := clientset.NewForConfig(cfg)
+	compositionClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		klog.Fatalf("Error building example clientset: %s", err.Error())
 	}
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	exampleInformerFactory := informers.NewSharedInformerFactory(exampleClient, time.Second*30)
+	compositionInformerFactory := informers.NewSharedInformerFactory(compositionClient, time.Second*30)
 
-	controller := NewController(kubeClient, exampleClient,
+	controller := NewController(kubeClient, compositionClient,
 		kubeInformerFactory.Apps().V1().Deployments(),
-		exampleInformerFactory.Samplecontroller().V1alpha1().Foos())
+		compositionInformerFactory.Crd().V1alpha1().Compositions())
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
 	kubeInformerFactory.Start(stopCh)
-	exampleInformerFactory.Start(stopCh)
+	compositionInformerFactory.Start(stopCh)
 
 	if err = controller.Run(2, stopCh); err != nil {
 		klog.Fatalf("Error running controller: %s", err.Error())
