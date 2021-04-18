@@ -1,0 +1,31 @@
+apiVersion: rbac.authorization.k8s.io/v1 
+kind: ClusterRole
+metadata:
+  name: sample-resource-access
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true" 
+    rbac.authorization.k8s.io/aggregate-to-edit: "true" 
+rules:
+  - apiGroups: ["samplecontroller.k8s.io"]
+    resources: ["Foo", "foos"] 
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["apps"] 
+    resources: ["Deployment", "deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: [""] 
+    resources: ["Event", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sample-access-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sample-resource-access
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
