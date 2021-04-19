@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: composite-controller
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c
 spec:
   replicas: 1
   selector:
@@ -11,7 +12,10 @@ spec:
     metadata:
       labels:
         app: composite
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
+      serviceAccountName: composition-controller-service-account
       containers:
       - name: composite
         image: "vipinpsc/composite-controller:latest"

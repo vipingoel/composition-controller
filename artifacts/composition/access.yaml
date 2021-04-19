@@ -2,6 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: composite-controller-role
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c
   labels:
     rbac.authorization.k8s.io/aggregate-to-admin: "true" 
     rbac.authorization.k8s.io/aggregate-to-edit: "true" 
@@ -21,11 +22,18 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: composite-controller-role-binding
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: composite-controller-role
 subjects:
 - kind: ServiceAccount
-  name: default
-  namespace: default
+  name: composition-controller-service-account
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: composition-controller-service-account
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c

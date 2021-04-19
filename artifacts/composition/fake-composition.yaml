@@ -2,5 +2,6 @@ apiVersion: crd.example.com/v1alpha1
 kind: Composition
 metadata:
   name: fake
+  namespace: poc-cygnus-service-crd-c385ca5c89ad6b586b07b32d0496863c
 spec:
   replicas: 2

@@ -31,6 +31,10 @@ func deploymentName(compositionName string) string {
 	return compositionName + "-deployment"
 }
 
+func containerName(compositionName string) string {
+	return compositionName + "-container"
+}
+
 func serviceName(compositionName string) string {
 	return compositionName + "-service"
 }
@@ -59,6 +63,7 @@ func createLabels(compositionName string) map[string]string {
 // the Composition resource that 'owns' it.
 func newDeployment(composition *compositionv1alpha1.Composition) *appsv1.Deployment {
 	labels := createLabels(composition.Name)
+	// val := intstr.FromInt(25)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName(composition.Name),
@@ -73,16 +78,53 @@ func newDeployment(composition *compositionv1alpha1.Composition) *appsv1.Deploym
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
+			MinReadySeconds: 1,
+			// TODO ProgressDeadlineSeconds: 600,
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				// RollingUpdate: &appsv1.RollingUpdateDeployment{
+				// 	MaxSurge:       &val,
+				// 	MaxUnavailable: &val,
+				// },
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
 					Annotations: map[string]string{"sidecar.istio.io/rewriteAppHTTPProbers": "true"},
 				},
 				Spec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+								{
+									Weight: 100,
+									PodAffinityTerm: corev1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchLabels: labels,
+										},
+										TopologyKey: "kubernetes.io/hostname",
+									},
+								},
+							},
+						},
+					},
 					Containers: []corev1.Container{
 						{
-							Name:  "nginx",
-							Image: "nginx:latest",
+							Name: containerName(composition.Name),
+							// TODO composition.Image
+							Image:           "nginx:latest",
+							ImagePullPolicy: corev1.PullAlways,
+							// TODO Resources: composition.Resources,
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 8080,
+								},
+							},
+							// TODO Env: composition.Env,
+							SecurityContext: &corev1.SecurityContext{
+								ReadOnlyRootFilesystem: true,
+								RunAsNonRoot:           true,
+							},
 						},
 					},
 				},
