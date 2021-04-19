@@ -28,6 +28,7 @@ import (
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
+	"composition-controller/pkg/core"
 	clientset "composition-controller/pkg/generated/clientset/versioned"
 	informers "composition-controller/pkg/generated/informers/externalversions"
 
@@ -64,8 +65,12 @@ func main() {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	compositionInformerFactory := informers.NewSharedInformerFactory(compositionClient, time.Second*30)
 
-	controller := NewController(kubeClient, compositionClient,
+	controller := core.NewController(kubeClient, compositionClient,
 		kubeInformerFactory.Apps().V1().Deployments(),
+		kubeInformerFactory.Core().V1().Services(),
+		kubeInformerFactory.Networking().V1beta1().Ingresses(),
+		kubeInformerFactory.Autoscaling().V2beta2().HorizontalPodAutoscalers(),
+		kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets(),
 		compositionInformerFactory.Crd().V1alpha1().Compositions())
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)

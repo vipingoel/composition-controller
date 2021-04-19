@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package core
 
 import (
 	"reflect"
@@ -33,7 +33,6 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	compositioncontroller "composition-controller/pkg/apis/compositioncontroller/v1alpha1"
-
 	"composition-controller/pkg/generated/clientset/versioned/fake"
 	informers "composition-controller/pkg/generated/informers/externalversions"
 )
@@ -87,8 +86,9 @@ func (f *fixture) newController() (*Controller, informers.SharedInformerFactory,
 	i := informers.NewSharedInformerFactory(f.client, noResyncPeriodFunc())
 	k8sI := kubeinformers.NewSharedInformerFactory(f.kubeclient, noResyncPeriodFunc())
 
-	c := NewController(f.kubeclient, f.client,
-		k8sI.Apps().V1().Deployments(), i.Crd().V1alpha1().Compositions())
+	c := NewController(f.kubeclient, f.client, k8sI.Apps().V1().Deployments(), k8sI.Core().V1().Services(),
+		k8sI.Networking().V1beta1().Ingresses(), k8sI.Autoscaling().V2beta2().HorizontalPodAutoscalers(),
+		k8sI.Policy().V1beta1().PodDisruptionBudgets(), i.Crd().V1alpha1().Compositions())
 
 	c.compositionsSynced = alwaysReady
 	c.deploymentsSynced = alwaysReady

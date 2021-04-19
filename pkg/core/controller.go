@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package core
 
 import (
 	"context"
@@ -28,10 +28,19 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
+	autoscalinginformers "k8s.io/client-go/informers/autoscaling/v2beta2"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	networkinginformers "k8s.io/client-go/informers/networking/v1beta1"
+	policyinformers "k8s.io/client-go/informers/policy/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
+	autoscalinglisters "k8s.io/client-go/listers/autoscaling/v2beta2"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	networkinglisters "k8s.io/client-go/listers/networking/v1beta1"
+	policylisters "k8s.io/client-go/listers/policy/v1beta1"
+
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -69,8 +78,27 @@ type Controller struct {
 	// compositionclientset is a clientset for our own API group
 	compositionclientset clientset.Interface
 
-	deploymentsLister  appslisters.DeploymentLister
-	deploymentsSynced  cache.InformerSynced
+	// deployment
+	deploymentsLister appslisters.DeploymentLister
+	deploymentsSynced cache.InformerSynced
+
+	// service
+	servicesLister corelisters.ServiceLister
+	servicesSynced cache.InformerSynced
+
+	// ingress
+	ingressesLister networkinglisters.IngressLister
+	ingressesSynced cache.InformerSynced
+
+	// hpa
+	hpasLister autoscalinglisters.HorizontalPodAutoscalerLister
+	hpasSynced cache.InformerSynced
+
+	// pdb
+	pdbsLister policylisters.PodDisruptionBudgetLister
+	pdbsSynced cache.InformerSynced
+
+	// composition custom resource
 	compositionsLister listers.CompositionLister
 	compositionsSynced cache.InformerSynced
 
@@ -89,7 +117,12 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	compositionclientset clientset.Interface,
+
 	deploymentInformer appsinformers.DeploymentInformer,
+	serviceInformer coreinformers.ServiceInformer,
+	ingressInformer networkinginformers.IngressInformer,
+	hpaInformer autoscalinginformers.HorizontalPodAutoscalerInformer,
+	pdbInformer policyinformers.PodDisruptionBudgetInformer,
 	compositionInformer informers.CompositionInformer) *Controller {
 
 	// Create event broadcaster
@@ -105,12 +138,27 @@ func NewController(
 	controller := &Controller{
 		kubeclientset:        kubeclientset,
 		compositionclientset: compositionclientset,
-		deploymentsLister:    deploymentInformer.Lister(),
-		deploymentsSynced:    deploymentInformer.Informer().HasSynced,
-		compositionsLister:   compositionInformer.Lister(),
-		compositionsSynced:   compositionInformer.Informer().HasSynced,
-		workqueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Compositions"),
-		recorder:             recorder,
+
+		deploymentsLister: deploymentInformer.Lister(),
+		deploymentsSynced: deploymentInformer.Informer().HasSynced,
+
+		servicesLister: serviceInformer.Lister(),
+		servicesSynced: serviceInformer.Informer().HasSynced,
+
+		ingressesLister: ingressInformer.Lister(),
+		ingressesSynced: ingressInformer.Informer().HasSynced,
+
+		hpasLister: hpaInformer.Lister(),
+		hpasSynced: hpaInformer.Informer().HasSynced,
+
+		pdbsLister: pdbInformer.Lister(),
+		pdbsSynced: pdbInformer.Informer().HasSynced,
+
+		compositionsLister: compositionInformer.Lister(),
+		compositionsSynced: compositionInformer.Informer().HasSynced,
+
+		workqueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Compositions"),
+		recorder:  recorder,
 	}
 
 	klog.Info("Setting up event handlers")
@@ -262,17 +310,8 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	deploymentName := composition.Name + "-deployment"
-	if deploymentName == "" {
-		// We choose to absorb the error here as the worker would requeue the
-		// resource otherwise. Instead, the next time the resource is updated
-		// the resource will be queued again.
-		utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
-		return nil
-	}
-
-	// Get the deployment with the name specified in Composition.spec
-	deployment, err := c.deploymentsLister.Deployments(composition.Namespace).Get(deploymentName)
+	// Get the deployment by convention from name of the Composition resource
+	deployment, err := c.deploymentsLister.Deployments(composition.Namespace).Get(deploymentName(composition.Name))
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
 		deployment, err = c.kubeclientset.AppsV1().Deployments(composition.Namespace).Create(context.TODO(), newDeployment(composition), metav1.CreateOptions{})
@@ -383,43 +422,5 @@ func (c *Controller) handleObject(obj interface{}) {
 
 		c.enqueueComposition(composition)
 		return
-	}
-}
-
-// newDeployment creates a new Deployment for a Composition resource. It also sets
-// the appropriate OwnerReferences on the resource so handleObject can discover
-// the Composition resource that 'owns' it.
-func newDeployment(composition *compositionv1alpha1.Composition) *appsv1.Deployment {
-	labels := map[string]string{
-		"app":        "nginx",
-		"controller": composition.Name,
-	}
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      composition.Name + "-deployment",
-			Namespace: composition.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(composition, compositionv1alpha1.SchemeGroupVersion.WithKind("Composition")),
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: composition.Spec.Replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:latest",
-						},
-					},
-				},
-			},
-		},
 	}
 }
